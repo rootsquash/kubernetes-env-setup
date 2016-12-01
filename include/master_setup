@@ -1,0 +1,239 @@
+function Master_Setup () {
+
+	# Install packages
+	rpm -qa | grep -qw etcd || yum install -y etcd
+	rpm -qa | grep -qw flannel || yum install -y flannel
+	rpm -qa | grep docker | grep -v 'docker-rhel\|docker-selinux\|docker-common\|docker-forward-journald' > /dev/null 2>&1 || yum install -y docker
+	rpm -qa | grep -qw kubernetes-master || yum install -y kubernetes-master kubernetes-client
+
+	systemctl stop firewalld
+	systemctl disable firewalld
+
+#	DISCOVERY="$( awk -F= '/ETCD_DISCOVERY=/{print $2}' ${CLUSTER_ENV} )"
+
+	DATE=$( date "+%Y%m%d%H%M%S" )
+	. /root/.kube.env
+
+    echo "### Configuring etcd on ${HOSTNAME} ###"
+
+	systemctl stop etcd
+
+	ETCD_INITIAL_CLUSTER=""
+
+	RMASTERS=`for MASTER in ${MASTERS}; do echo $MASTER; done | tac`
+	for MASTER in ${RMASTERS}
+	do
+
+		ETCD_INITIAL_CLUSTER="${MASTER}=https://${MASTER}:2380,${ETCD_INITIAL_CLUSTER}"
+	done
+
+	ETCD_INITIAL_CLUSTER="$( echo ${ETCD_INITIAL_CLUSTER} | perl -pe 's/,$//' )"
+
+	rm -rf "${DATA_DIR}" 2> /dev/null
+	mkdir -p "${DATA_DIR}" "${MANIFESTS}" 2> /dev/null
+	chown -R etcd:etcd /data/etcd 
+	cp /etc/etcd/etcd.conf /etc/etcd/etcd.conf.${DATE}
+	id etcd > /dev/null 2>&1 && OWNER="etcd" || OWNER="kube" 
+	chown -R ${OWNER}:kube ${CERTDIR}
+	chmod 750 ${CERTDIR}
+	chmod 640 ${SERVER_KEY}
+	semanage fcontext  -at cert_t "${CERTDIR}/.*.(crt|key)"
+	restorecon -R -v ${CERTDIR}
+
+	echo "
+# [member]
+ETCD_NAME=\"${HOSTNAME}\"
+ETCD_DATA_DIR=\"${DATA_DIR}\"
+#ETCD_WAL_DIR=\"\"
+#ETCD_SNAPSHOT_COUNT=\"10000\"
+#ETCD_HEARTBEAT_INTERVAL=\"500\"
+ETCD_ELECTION_TIMEOUT=\"20000\"
+ETCD_LISTEN_PEER_URLS=\"https://${HOSTNAME}:2380\"
+ETCD_LISTEN_CLIENT_URLS=\"https://${HOSTNAME}:2379,https://127.0.0.1:2379\"
+#ETCD_MAX_SNAPSHOTS=\"5\"
+#ETCD_MAX_WALS=\"5\"
+#ETCD_CORS=\"\"
+#
+#[cluster]
+ETCD_INITIAL_ADVERTISE_PEER_URLS=\"https://${HOSTNAME}:2380\"
+ETCD_INITIAL_CLUSTER=\"${ETCD_INITIAL_CLUSTER}\"
+ETCD_INITIAL_CLUSTER_STATE=\"new\"
+ETCD_INITIAL_CLUSTER_TOKEN=\"${CLUSTER_NAME}-cluster\"
+ETCD_ADVERTISE_CLIENT_URLS=\"https://${HOSTNAME}:2379\"
+#ETCD_DISCOVERY=\"${DISCOVERY}\"
+#ETCD_DISCOVERY_SRV=\"\"
+#ETCD_DISCOVERY_FALLBACK=\"proxy\"
+#ETCD_DISCOVERY_PROXY=\"\"
+#ETCD_STRICT_RECONFIG_CHECK=\"false\"
+#
+#[proxy]
+#ETCD_PROXY=\"off\"
+#ETCD_PROXY_FAILURE_WAIT=\"5000\"
+#ETCD_PROXY_REFRESH_INTERVAL=\"30000\"
+#ETCD_PROXY_DIAL_TIMEOUT=\"1000\"
+#ETCD_PROXY_WRITE_TIMEOUT=\"5000\"
+#ETCD_PROXY_READ_TIMEOUT=\"0\"
+#
+#[security]
+ETCD_CERT_FILE=\"${SERVER_CRT}\"
+ETCD_KEY_FILE=\"${SERVER_KEY}\"
+ETCD_TRUSTED_CA_FILE=\"${CA_CRT}\"
+ETCD_CLIENT_CERT_AUTH=\"true\"
+ETCD_PEER_CERT_FILE=\"${SERVER_CRT}\"
+ETCD_PEER_KEY_FILE=\"${SERVER_KEY}\"
+ETCD_PEER_TRUSTED_CA_FILE=\"${CA_CRT}\"
+ETCD_PEER_CLIENT_CERT_AUTH=\"true\"
+#
+#[logging]
+#ETCD_DEBUG=\"false\"
+# examples for -log-package-levels etcdserver=WARNING,security=DEBUG
+#ETCD_LOG_PACKAGE_LEVELS=\"etcdserver=DEBUG,security=DEBUG\"
+" > /etc/etcd/etcd.conf
+
+
+	[[ -d $CERTDIR/flannel ]] || mkdir -p $CERTDIR/flannel
+
+	echo "
+{
+  \"Network\": \"$FLANNEL_NETWORK\",
+  \"SubnetLen\": 24,
+  \"Backend\": {
+    \"Type\": \"vxlan\",
+    \"VNI\": 1
+  }
+}" > ${CERTDIR}/flannel/flannel.json
+
+	#etcdctl get coreos.com/network/config 2> /dev/null && exit 0
+	#etcdctl set coreos.com/network/config < ${CERTDIR}/flannel/flannel.json
+
+	echo "### Configuring flannel on ${HOSTNAME} ###"
+
+	systemctl stop flanneld docker kube-apiserver kube-controller-manager kube-scheduler
+
+    cp /etc/sysconfig/flanneld /etc/sysconfig/flanneld.${DATE}
+
+    echo "###
+# Flanneld configuration options
+# Genereated by ${SRC}/${PROG}
+# $( date )
+
+# etcd url location.  Point this to the server where etcd runs
+FLANNEL_ETCD=\"${ETCDCTL_ENDPOINTS}\"
+
+# etcd config key.  This is the configuration key that flannel queries
+# For address range assignment
+FLANNEL_ETCD_KEY=\"/coreos.com/network\"
+
+# Any additional options that you want to pass
+FLANNEL_OPTIONS=\"-etcd-keyfile=${CLIENT_KEY} -etcd-certfile=${CLIENT_CRT} -etcd-cafile=${CA_CRT}\"
+" > /etc/sysconfig/flanneld
+
+
+	echo "### Configuring token on ${HOSTNAME} ###"
+
+	echo "${TOKEN},kubelet,kubelet" > ${CERTDIR}/known_tokens.csv
+
+
+### Configure apiserver ###
+
+	cp /etc/kubernetes/apiserver /etc/kubernetes/apiserver.${DATE}
+	MACHINES="$( echo ${ETCDCTL_ENDPOINTS} | perl -pe 's/^/"/; s/,/","/g; s/$/"/' )"
+
+	echo "###
+# kubernetes system config
+# Genereated by ${SRC}/${PROG}
+# $( date )
+#
+# The following values are used to configure the kube-apiserver
+#
+
+# The address on the local server to listen to.
+KUBE_API_ADDRESS=\"--bind-address=0.0.0.0\"
+
+# The port on the local server to listen on.
+KUBE_API_PORT=\"--insecure-port=8080\"
+
+# Comma separated list of nodes in the etcd cluster
+KUBE_ETCD_SERVERS=\"--etcd-cafile=${CA_CRT} --etcd-certfile=${CLIENT_CRT} --etcd-keyfile=${CLIENT_KEY} --etcd-servers=${MACHINES}\"
+
+# Address range to use for services
+KUBE_SERVICE_ADDRESSES=\"--service-cluster-ip-range=192.168.0.0/16\"
+
+# default admission control policies
+KUBE_ADMISSION_CONTROL=\"--admission_control=NamespaceLifecycle,NamespaceExists,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota\"
+
+# Add your own and include certificates
+KUBE_API_ARGS=\"--insecure-bind-address=127.0.0.1 --kubelet-https=true --client-ca-file=${CA_CRT} --tls-cert-file=${SERVER_CRT} --tls-private-key-file=${SERVER_KEY} --token_auth_file=${CERTDIR}/known_tokens.csv\"
+" > /etc/kubernetes/apiserver
+
+
+
+### Configure controller-manager ###
+
+	cp /etc/kubernetes/controller-manager /etc/kubernetes/controller-manager.${DATE}
+
+	echo "###
+# kubernetes system config
+# Genereated by ${SRC}/${PROG}
+# $( date )
+# The following values are used to configure the kubernetes controller-manager
+
+# defaults from config and apiserver should be adequate
+
+# Add your own!
+
+KUBE_CONTROLLER_MANAGER_ARGS=\"--root-ca-file=${CA_CRT} --service-account-private-key-file=${CLIENT_KEY} --node-monitor-grace-period=20s --pod-eviction-timeout=20s --leader-elect\"
+" > /etc/kubernetes/controller-manager
+
+
+
+### Configure scheduler ###
+
+    cp /etc/kubernetes/scheduler /etc/kubernetes/scheduler.${DATE}
+
+    echo "###
+# kubernetes system config
+# kubernetes scheduler config
+# Genereated by ${SRC}/${PROG}
+# $( date )
+# The following values are used to configure the kubernetes scheduler
+
+# default config should be adequate
+
+# Add your own!
+KUBE_SCHEDULER_ARGS=\"--leader-elect\"
+" > /etc/kubernetes/controller-manager
+
+
+
+### Configure global config ###
+
+        cp /etc/kubernetes/config /etc/kubernetes/config.${DATE}
+
+	echo "###
+# kubernetes system config
+# Genereated by ${SRC}/${PROG}
+# $( date )
+#
+# The following values are used to configure various aspects of all
+# kubernetes services, including
+#
+#   kube-apiserver.service
+#   kube-controller-manager.service
+#   kube-scheduler.service
+#   kubelet.service
+#   kube-proxy.service
+# logging to stderr means we get it in the systemd journal
+KUBE_LOGTOSTDERR=\"--logtostderr=true\"
+
+# journal message level, 0 is debug
+KUBE_LOG_LEVEL=\"--v=0\"
+
+# Should this cluster be allowed to run privileged docker containers
+KUBE_ALLOW_PRIV=\"--allow_privileged=false\"
+
+# How the controller-manager, scheduler, and proxy find the apiserver
+KUBE_MASTER=\"--master=http://127.0.0.1:8080\"
+" > /etc/kubernetes/config
+
+} # EO Master_Setup

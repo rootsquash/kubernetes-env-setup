@@ -1,0 +1,96 @@
+Create_Cluster_Env() {
+
+	echo "### Creating the cluster environment ###"
+
+	#-- Make sure at least a blank env file exists for DISCOVERY test
+	touch ${CLUSTER_ENV}
+	
+	#-- Cluster Key and CSR. Servers don't need a copy of this
+	CSR="${CERTDIR}/${CLUSTER_NAME}.csr"
+	CA_KEY="${CERTDIR}/${CLUSTER_NAME}-ca.key"
+	
+	ETCDCTL_ENDPOINTS=""
+
+	RMASTERS=`for MASTER in ${MASTERS}; do echo $MASTER; done | tac`
+	for MASTER in ${RMASTERS}
+        do
+		ETCDCTL_ENDPOINTS="https://${MASTER}:2379,${ETCDCTL_ENDPOINTS}"
+	done
+
+	ETCDCTL_ENDPOINTS="$( echo ${ETCDCTL_ENDPOINTS} | perl -pe 's/,$//' )"
+	
+	
+	#-- Create Server Environment Files
+	typeset -l API_MASTER="${CLUSTER_FQDN}"
+
+	echo "###
+#-- Created by ${SRC}/${PROG}
+#   $( date )
+
+#-- Needed for configuring the certs on servers in the cluster ${CLUSTER_NAME}
+CLUSTER_NAME='${CLUSTER_NAME}'
+TOKEN='${TOKEN}'
+CONTEXT_NAME='service-account-context'
+USER='kubelet'
+DATA_DIR='/data/etcd/${CLUSTER_NAME}-cluster'
+MANIFESTS='/data/etcd/${CLUSTER_NAME}-manifests'
+
+#-- Kubernetes API : A load-balanced VIP
+API_PORT='6443'
+#API_MASTER='${CLUSTER_NAME}-api:6443'
+API_MASTER='${API_MASTER}:6443'
+
+#-- Domain
+DOMAIN='${DOMAIN}'
+	
+#-- Servers of note
+MASTERS='${MASTERS}'
+NODES='${NODES}'
+#MASTER_IPS='${MASTER_IPS}'
+#NODE_IPS='${NODE_IPS}'
+#HOSTNAME=${HOSTNAME}
+HOST_LIST='${HOST_LIST}'
+
+#-- Cluster settings
+CLUSTER_FQDN='${CLUSTER_FQDN}'
+CLUSTER_VIP='${CLUSTER_VIP}'
+
+#-- keepalived settins
+KEEPALIVED_VIRTUAL_ROUTER_ID='${KEEPALIVED_VIRTUAL_ROUTER_ID}'
+KEEPALIVED_PASSWORD='${KEEPALIVED_PASSWORD}'
+
+#-- Flannel network
+FLANNEL_NETWORK='${FLANNEL_NETWORK}'
+	
+#-- Cert directory and the cert/key paths
+CERTDIR='${CERTDIR}'
+
+#-- Cluster CA Certs
+CA_CRT='${CERTDIR}/${CLUSTER_NAME}-ca.crt'
+	
+#-- Server and client certs
+SERVER_KEY='${CERTDIR}/${CLUSTER_NAME}.key'
+SERVER_CRT='${CERTDIR}/${CLUSTER_NAME}.crt'
+CLIENT_KEY='${CERTDIR}/etcd-${CLUSTER_NAME}.key'
+CLIENT_CRT='${CERTDIR}/etcd-${CLUSTER_NAME}.crt'
+	
+#-- Required to get etcdctl to work correctly in clustered env
+ETCDCTL_CA_FILE=\"\${CA_CRT}\"
+ETCDCTL_CERT_FILE=\"\${CLIENT_CRT}\"
+ETCDCTL_KEY_FILE=\"\${CLIENT_KEY}\"
+ETCDCTL_ENDPOINTS='${ETCDCTL_ENDPOINTS}'
+ETCDCTL_PEERS='${ETCDCTL_ENDPOINTS}'
+	
+export ETCDCTL_CERT_FILE ETCDCTL_KEY_FILE ETCDCTL_CA_FILE ETCDCTL_ENDPOINTS ETCDCTL_PEERS
+
+#-- Used to configure etcd
+# ETCD_DISCOVERY=${DISCOVERY}
+" > ${CLUSTER_ENV}
+
+for HOST in ${HOST_LIST}
+do
+    scp -o StrictHostKeyChecking=no -q ${CLUSTER_ENV} root@${HOST}:${CLUSTER_ENV}
+done
+
+
+} # EO Create_Cluster_Env

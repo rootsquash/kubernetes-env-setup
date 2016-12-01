@@ -1,0 +1,54 @@
+function Generate_the_CA_Cert() {
+
+	#-- Configure OpenSSL before creating certificates
+	
+	perl -i -pe 's/^default_days\s*=\s*\d+\s*/default_days\t= 10000\t\t/'  /etc/pki/tls/openssl.cnf 
+
+		cp /etc/pki/tls/openssl.cnf /etc/pki/tls/openssl.cnf.${DATE}	
+		grep -qw "ssl_client" /etc/pki/tls/openssl.cnf || print "
+
+#--Add ssl_client in openssl.cnf to allow self-signed certs to work in flannel and kube-api
+[ ssl_client ]                                                                                                                                    
+basicConstraints = CA:FALSE
+nsCertType = client
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = clientAuth
+nsComment = \"OpenSSL Certificate for SSL Client\"
+" >> /etc/pki/tls/openssl.cnf
+	
+	#-- Generate Certificates 
+	
+	#-- CA Cert 
+	if [[ -s ${CA_KEY} && -s ${CA_CRT} ]]
+	then
+		echo "Found existing CA key anc CA Cert"
+	elif [[ -s ${CA_KEY} || -s ${CA_CRT} ]]
+	then
+		Error_Exit 1 "
+	Either the CA key or the CA cert were deleted.  
+	Recover this missing file from tape to continue.
+	
+	Or, delete the remaining file and start this WHOLE process over.
+	"
+	else
+		openssl genrsa -out ${CA_KEY} 4096 && \
+		openssl req -x509 -new -nodes -key ${CA_KEY} -subj "/CN=*.${DOMAIN}" -out ${CA_CRT} -days ${CERT_VALID_FOR}
+		(( $? )) && Error_Exit 1 "Failed to create CA key and cert files."
+	fi
+	
+	#-- This is where you put self signed certs
+	# - Doc: https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Virtualization/3.2/html/Developer_Guide/Creating_an_SSL_Certificate.html
+	# + Doc: http://docs.alfresco.com/5.1/tasks/setup-ca-modauthcas.html
+	[[ -d /etc/pki/CA/private/ ]] || mkdir -p /etc/pki/CA/{certs,crl,newcerts,private}
+	ln -s -f ${CA_KEY} /etc/pki/CA/private/cakey.pem
+	ln -s -f ${CA_CRT} /etc/pki/CA/cacert.pem
+	#	ln -s -f ${CA_CRT} /etc/pki/CA/certs/cacert.pem
+	#	ln -s -f ${CA_CRT} /etc/pki/CA/certs/`openssl x509 -hash -noout -in ${CA_CRT}`.0
+	chmod 700 ${CACERT} /etc/pki/CA/private 
+	chmod 600 ${CA_KEY} 
+	
+	[[ -s /etc/pki/CA/index.txt ]] && return
+	touch /etc/pki/CA/index.txt
+	echo '1000' > /etc/pki/CA/serial
+} # EO Generate_the_CA_Cert
+

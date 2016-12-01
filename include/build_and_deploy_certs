@@ -1,0 +1,30 @@
+Build_and_Deploy_Certs() { 
+
+	#-- Certs used to start/secure etcd and kube-apiserver
+	[[ -s ${SERVER_KEY} || -s ${CSR} ]] || openssl req -newkey rsa:2048 -nodes -keyout ${SERVER_KEY} -subj "/CN=*.${DOMAIN}" -out ${CSR}
+
+	[[ -s ${SERVER_CRT} ]] || openssl x509 -req -in ${CSR} -CA ${CA_CRT} -CAkey ${CA_KEY} -CAcreateserial -out ${SERVER_CRT} -days ${CERT_VALID_FOR}
+
+	#-- Certs used by clients of etcd - flanneld and kube-apiserver 
+	cmp ${SERVER_KEY} ${CLIENT_KEY} 2> /dev/null || cp ${SERVER_KEY} ${CLIENT_KEY}
+
+	[[ -s ${CLIENT_CRT} ]] || openssl ca -batch -config /etc/pki/tls/openssl.cnf -policy policy_anything -extensions ssl_client -out ${CLIENT_CRT} -infiles ${CSR}
+
+    [[ -s ${CLIENT_CRT} ]] || Error_Exit 1 "Failed to create -s ${CLIENT_CRT} ]]"
+
+	if (( $? )) || [[ ! -s ${CLIENT_CRT} ]]
+	then
+		Error_Exit 1 "Failed to create ${CLIENT_CRT}"
+	fi
+  
+	echo
+	echo "### Copying client certificates to kubernetes nodes ###"
+	echo
+
+	for HOST in ${HOST_LIST}
+	do
+		ssh -o StrictHostKeyChecking=no -q root@${HOST} "[[ -d $CERTDIR ]] || mkdir -p $CERTDIR"
+		rsync -avW "${CLUSTER_ENV}" "${CA_CRT}" "${SERVER_CRT}" "${SERVER_KEY}" "${CLIENT_CRT}" "${CLIENT_KEY}" root@${HOST}:"${CERTDIR}/"
+	done
+
+} # EO Build_and_Deploy_Certs

@@ -1,0 +1,8 @@
+function remote::run() {
+  # usage: remote::run "host" "includes" "commands"
+    # where "includes" is a list of functions to export to
+	  # the remote host
+
+	    [[ -n "$2" ]] && includes="$(declare -f $2);"
+		  ssh -o StrictHostKeyChecking=no -q -T $1 "$includes $3"
+  }

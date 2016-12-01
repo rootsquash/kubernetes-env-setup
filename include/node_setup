@@ -1,0 +1,257 @@
+Node_Setup() {
+
+    # Install packages
+    rpm -qa | grep -qw flannel || yum install -y flannel
+	rpm -qa | grep docker | grep -v 'docker-rhel\|docker-selinux\|docker-common\|docker-forward-journald' > /dev/null 2>&1 || yum install -y docker
+    rpm -qa | grep -qw kubernetes-node || yum install -y kubernetes-node kubernetes-client
+	rpm -qa | grep -qw keepalived || yum install -y keepalived
+	rpm -qa | grep -qw haproxy || yum install -y haproxy
+
+	systemctl stop firewalld
+	systemctl disable firewalld
+
+    DATE=$( date "+%Y%m%d%H%M%S" )
+    . /root/.kube.env
+
+	#-- Add the cert to the servers CA registry.  Makes other commands easier later
+	if [[ ! -s /etc/pki/ca-trust/source/anchors/$( basename ${CA_CRT} ) ]]
+	then
+		cp ${CA_CRT} /etc/pki/ca-trust/source/anchors/
+		update-ca-trust extract
+	fi
+
+	#-- Add the certs to the expected etcd locations
+	mkdir -p /etc/ssl/etcd/{certs,private} 2> /dev/null
+
+	#-- If there are new keys then set them in place
+	[[ -s "${CLIENT_KEY}" && -s "${CLIENT_CRT}" ]] || Error_Exit 1 "The client crt/key are missing or empty"
+
+	id etcd > /dev/null 2>&1 && OWNER="etcd" || OWNER="kube" 
+	chown -R ${OWNER}:kube ${CERTDIR}
+	chmod 750 ${CERTDIR}
+	chmod 640 ${SERVER_KEY}
+	semanage fcontext  -at cert_t "${CERTDIR}/.*.(crt|key)"
+	restorecon -R -v ${CERTDIR}
+
+	cp /etc/sysconfig/flanneld /etc/sysconfig/flanneld.${DATE}
+
+	echo "###
+# Flanneld configuration options
+# Genereated by ${SRC}/${PROG}
+# $( date )
+
+# etcd url location.  Point this to the server where etcd runs
+FLANNEL_ETCD=\"${ETCDCTL_ENDPOINTS}\"
+
+# etcd config key.  This is the configuration key that flannel queries
+# For address range assignment
+FLANNEL_ETCD_KEY=\"/coreos.com/network\"
+
+# Any additional options that you want to pass
+FLANNEL_OPTIONS=\"-etcd-keyfile=${CLIENT_KEY} -etcd-certfile=${CLIENT_CRT} -etcd-cafile=${CA_CRT}\"
+" > /etc/sysconfig/flanneld
+
+	cp /etc/kubernetes/config /etc/kubernetes/config.${DATE}
+
+	#-- Update the generic Kube Configs to point to LB-VIP
+	echo "###
+# kubernetes system config
+# Genereated by ${SRC}/${PROG}
+# $( date )
+#
+# The following values are used to configure various aspects of all
+# kubernetes services, including
+#
+#   kube-apiserver.service
+#   kube-controller-manager.service
+#   kube-scheduler.service
+#   kubelet.service
+#   kube-proxy.service
+# logging to stderr means we get it in the systemd journal
+KUBE_LOGTOSTDERR=\"--logtostderr=true\"
+
+# journal message level, 0 is debug
+KUBE_LOG_LEVEL=\"--v=0\"
+
+# Should this cluster be allowed to run privileged docker containers
+KUBE_ALLOW_PRIV=\"--allow_privileged=false\"
+
+# How the controller-manager, scheduler, and proxy find the apiserver
+KUBE_MASTER=\"--master=https://${API_MASTER}\"
+" > /etc/kubernetes/config
+
+	cp /etc/kubernetes/kubelet /etc/kubernetes/kubelet.${DATE}
+
+	echo "###
+# kubernetes kubelet (minion) config
+# Genereated by ${SRC}/${PROG}
+# $( date )
+
+# The address for the info server to serve on (set to 0.0.0.0 or "" for all interfaces)
+KUBELET_ADDRESS=\"--address=0.0.0.0\"
+
+# The port for the info server to serve on
+# KUBELET_PORT=\"--port=10250\"
+
+# You may leave this blank to use the actual hostname
+KUBELET_HOSTNAME=\"--hostname_override=${HOSTNAME}\"
+
+# location of the api-server
+KUBELET_API_SERVER=\"--api_servers=https://${API_MASTER}\"
+
+# Add your own! 
+KUBELET_ARGS=\"--enable_server=true --register-node=true --kubeconfig=/var/lib/kubelet/kubeconfig\"
+" > /etc/kubernetes/kubelet
+
+
+	cp /etc/kubernetes/proxy /etc/kubernetes/proxy.${DATE}
+
+	echo "###
+# kubernetes proxy config
+# Genereated by ${SRC}/${PROG}
+# $( date )
+###
+# kubernetes proxy config
+
+# default config should be adequate
+
+# Add your own!
+KUBE_PROXY_ARGS=\"--kubeconfig=/var/lib/kube-proxy/kubeconfig\"
+" > /etc/kubernetes/proxy
+
+
+	if [[ -s /root/.kube/config ]]
+	then
+		[[ -s /root/.kube/config.${DATE} ]] && rm -f /root/.kube/config || mv /root/.kube/config /root/.kube/config.${DATE} 
+	fi
+
+	#-- Configure the new Kubernentes cluster
+ 
+	kubectl config set preferences.colors true
+	kubectl config unset clusters
+	kubectl config set-cluster ${CLUSTER_NAME} --server=https://${API_MASTER} --certificate-authority=${CA_CRT} --embed-certs=true
+	kubectl config set-credentials ${USER} --client-certificate=${CLIENT_CRT} --client-key=${CLIENT_KEY} --embed-certs=true --token=${TOKEN}
+	kubectl config set-context ${CONTEXT_NAME} --cluster=${CLUSTER_NAME} --user=${USER}
+	kubectl config use-context ${CONTEXT_NAME}
+ 
+	[[ -d /var/lib/kube-proxy ]] || mkdir -p /var/lib/kube-proxy
+	cp /root/.kube/config /var/lib/kubelet/kubeconfig
+	cp /root/.kube/config /var/lib/kube-proxy/kubeconfig
+
+    # enable and restart services
+    systemctl enable flanneld docker kubelet kube-proxy
+    systemctl restart flanneld docker kubelet kube-proxy
+
+
+
+### Configure HAproxy ###
+
+	var=0
+	for MASTER in ${MASTERS}; do var=$((var+1)); HAMASTERS="${HAMASTERS}server apiserver$var ${MASTER}:6443 check port 6443\n    "; done
+	# Specify 6443 as an http port for selinux
+	semanage port -l | grep 6443 > /dev/null 2>&1 || semanage port -a -t http_port_t -p tcp 6443
+	#setsebool -P haproxy_connect_any 1
+	[[ -d /var/tmp/hatop ]] || mkdir -p /var/tmp/hatop
+	wget http://hatop.googlecode.com/files/hatop-0.7.7.tar.gz -O /var/tmp/hatop/
+	tar zxvf /var/tmp/hatop/hatop-0.7.7.tar.gz
+	
+	cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.${DATE}
+
+	echo -e "###
+# kubernetes haproxy settings for clustered apiserver
+# Genereated by ${SRC}/${PROG}
+# $( date )
+###
+# haproxy config
+
+global
+    log 127.0.0.1   local0
+    user haproxy
+    group haproxy
+    maxconn 100000
+    stats socket /var/run/haproxy.sock mode 600 level admin
+    stats timeout 2m
+
+defaults
+    log     global
+    mode    http
+    maxconn	95000
+    option  dontlognull
+    option http-server-close
+    timeout connect 5000
+    timeout client 50000
+    timeout server 50000
+    errorfile 400 /usr/share/haproxy/400.http
+    errorfile 403 /usr/share/haproxy/403.http
+    errorfile 408 /usr/share/haproxy/408.http
+    errorfile 500 /usr/share/haproxy/500.http
+    errorfile 502 /usr/share/haproxy/502.http
+    errorfile 503 /usr/share/haproxy/503.http
+    errorfile 504 /usr/share/haproxy/504.http
+
+frontend f_kube_apiserver
+    mode tcp
+    bind *:6443
+    #acl tls12 req.payload(9,2) -m bin 0303
+    #tcp-request inspect-delay 2s
+    #tcp-request content accept if tls12
+    #tcp-request content reject
+    use_backend b_kube_apiserver
+
+backend b_kube_apiserver
+    mode tcp
+    balance roundrobin
+    stick-table type binary len 32 size 30k expire 30m
+    option tcp-check
+    ${HAMASTERS}
+" > /etc/haproxy/haproxy.cfg
+
+	systemctl enable haproxy
+	systemctl restart haproxy
+
+
+
+### Configure keepalived ###
+
+    KA_PRIORITY=$((RANDOM%10+100))
+    cp /etc/keepalived/keepalived.conf /etc/keepalived/keepalived.conf.${DATE}
+
+    echo "###
+# kubernetes cluster vip
+# Genereated by ${SRC}/${PROG}
+# $( date )
+###
+# keepalived config
+
+vrrp_script chk_haproxy {
+        script \"killall -0 haproxy\"
+        interval 2
+        weight 2
+}
+
+vrrp_instance VI_1 {
+        interface eno16777984
+        state MASTER
+        virtual_router_id ${KEEPALIVED_VIRTUAL_ROUTER_ID}
+        priority ${KA_PRIORITY}
+
+        authentication {
+            auth_type PASS
+            auth_pass ${KEEPALIVED_PASSWORD}
+        }
+
+        # The Virtual IP (VIP) need to be on an adapter alias
+        virtual_ipaddress {
+            ${CLUSTER_VIP}/24 label eno16777984:0
+        }
+        track_script {
+            chk_haproxy
+        }
+}
+" > /etc/keepalived/keepalived.conf
+
+	systemctl enable keepalived
+	systemctl restart keepalived
+
+} # EO Node_Setup
+
