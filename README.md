@@ -7,7 +7,7 @@ This script installs and configures a secure, highly available <a href="http://k
 # Pre-requisites
 1. DNS resolution or existing host file entries for each master and node server.
 2. RHEL7/CentOS7 is preinstalled on all master and node servers.
-3. All systems are subscribed to the appriopriate channels/repos to download kubernetes, docker, flanneld, and etcd.
+3. All systems are subscribed to the appriopriate channels/repos to download kubernetes, docker, flanneld, etcd, haproxy, and keepalived.
 4. Script is run from a system that has SSH to all master and node servers with SSH key pair.
 
 # Install
