@@ -2,7 +2,7 @@
 There are no guarantees with this script and you assume all risk and responsbility.
 
 # Kubernetes Environment Setup
-This script installs and configures a secure, highly available <a href="http://kubernetes.io">Kubernetes</a> cluster using etcd, flannel, HAproxy, and keepalived on RHEL7/CentOS7 based systems.  This installs and configures the Kubernetes master services -- apiserver, controller-manager, and scheduler -- on 1 to many master servers.  This also setup the Kubernetes node services on 1 to many node servers.
+This script installs and configures a secure, highly available <a href="http://kubernetes.io">Kubernetes</a> cluster using etcd, flannel, HAproxy, and keepalived on RHEL7/CentOS7 based systems.  This installs and configures the Kubernetes master services -- apiserver, controller-manager, and scheduler -- on 1 to many master servers.  This also sets up the Kubernetes node services on 1 to many node servers.
 
 # Pre-requisites
 1. DNS resolution or existing host file entries for each master and node server.
