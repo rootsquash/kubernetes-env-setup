@@ -11,7 +11,7 @@ This script installs and configures a secure, highly available <a href="http://k
 4. Script is run from a system that has SSH to all master and node servers with SSH key pair.
 
 # Install
-1. Edit the *params.env* file (you can edit any parameter listed in the file).  Below are required:
+1. Edit the <b>params.env</b> file (you can edit any parameter listed in the file).  Below are required:
 
     CLUSTER_NAME
     
