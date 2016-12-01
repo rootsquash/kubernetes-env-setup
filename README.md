@@ -12,9 +12,11 @@ This script installs and configures a secure, highly available <a href="http://k
 
 # Install
 1. Edit the *params.env* file (you can edit any parameter listed in the file).  Below are required:
+
     CLUSTER_NAME
     
     MASTERS
+    
     NODES
     
     DOMAIN
