@@ -25,7 +25,7 @@ This script installs and configures a secure, highly available <a href="http://k
     
     CLUSTER_VIP
     
-2. run *setup_kube.sh*   
+2. run *./setup_kube.sh*   
  
  
 # Security Notes
