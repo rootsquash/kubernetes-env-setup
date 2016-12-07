@@ -24,8 +24,10 @@ This script installs and configures a secure, highly available <a href="http://k
     CLUSTER_FQDN
     
     CLUSTER_VIP
-    
-2. run *./setup_kube.sh*   
+
+2. *chmod 700 setup_kube.sh*
+
+3. run *./setup_kube.sh*   
  
  
 # Security Notes
