@@ -14,7 +14,7 @@ Create_Cluster_Env() {
 	RMASTERS=`for MASTER in ${MASTERS}; do echo $MASTER; done | tac`
 	for MASTER in ${RMASTERS}
         do
-		ETCDCTL_ENDPOINTS="https://${MASTER}:2379,${ETCDCTL_ENDPOINTS}"
+		ETCDCTL_ENDPOINTS="https://${MASTER}.${DOMAIN}:2379,${ETCDCTL_ENDPOINTS}"
 	done
 
 	ETCDCTL_ENDPOINTS="$( echo ${ETCDCTL_ENDPOINTS} | perl -pe 's/,$//' )"
