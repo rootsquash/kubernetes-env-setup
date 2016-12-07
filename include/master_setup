@@ -24,7 +24,7 @@ function Master_Setup () {
 	for MASTER in ${RMASTERS}
 	do
 
-		ETCD_INITIAL_CLUSTER="${MASTER}=https://${MASTER}:2380,${ETCD_INITIAL_CLUSTER}"
+		ETCD_INITIAL_CLUSTER="${MASTER}.${DOMAIN}=https://${MASTER}.${DOMAIN}:2380,${ETCD_INITIAL_CLUSTER}"
 	done
 
 	ETCD_INITIAL_CLUSTER="$( echo ${ETCD_INITIAL_CLUSTER} | perl -pe 's/,$//' )"
