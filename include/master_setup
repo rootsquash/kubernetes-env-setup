@@ -163,7 +163,7 @@ KUBE_SERVICE_ADDRESSES=\"--service-cluster-ip-range=192.168.0.0/16\"
 KUBE_ADMISSION_CONTROL=\"--admission_control=NamespaceLifecycle,NamespaceExists,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota\"
 
 # Add your own and include certificates
-KUBE_API_ARGS=\"--insecure-bind-address=127.0.0.1 --kubelet-https=true --client-ca-file=${CA_CRT} --tls-cert-file=${SERVER_CRT} --tls-private-key-file=${SERVER_KEY} --token_auth_file=${CERTDIR}/known_tokens.csv\"
+KUBE_API_ARGS=\"--insecure-bind-address=127.0.0.1 --kubelet-https=true --client-ca-file=${CA_CRT} --tls-cert-file=${SERVER_CRT} --tls-private-key-file=${SERVER_KEY} --token_auth_file=${CERTDIR}/known_tokens.csv --service-account-key-file=${SERVICEACCOUNT_KEY}\"
 " > /etc/kubernetes/apiserver
 
 
@@ -182,7 +182,7 @@ KUBE_API_ARGS=\"--insecure-bind-address=127.0.0.1 --kubelet-https=true --client-
 
 # Add your own!
 
-KUBE_CONTROLLER_MANAGER_ARGS=\"--root-ca-file=${CA_CRT} --service-account-private-key-file=${CLIENT_KEY} --node-monitor-grace-period=20s --pod-eviction-timeout=20s --leader-elect\"
+KUBE_CONTROLLER_MANAGER_ARGS=\"--root-ca-file=${CA_CRT} --service-account-private-key-file=${CLIENT_KEY} --node-monitor-grace-period=20s --pod-eviction-timeout=20s --leader-elect --service-account-private-key-file=${SERVICEACCOUNT_KEY}\"
 " > /etc/kubernetes/controller-manager
 
 
