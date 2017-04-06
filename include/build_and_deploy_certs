@@ -5,6 +5,8 @@ Build_and_Deploy_Certs() {
 
 	[[ -s ${SERVER_CRT} ]] || openssl x509 -req -in ${CSR} -CA ${CA_CRT} -CAkey ${CA_KEY} -CAcreateserial -out ${SERVER_CRT} -days ${CERT_VALID_FOR}
 
+	[[ -s ${SERVICEACCOUNT_KEY} ]] || openssl genrsa -out ${SERVICEACCOUNT_KEY} 2048
+
 	#-- Certs used by clients of etcd - flanneld and kube-apiserver 
 	cmp ${SERVER_KEY} ${CLIENT_KEY} 2> /dev/null || cp ${SERVER_KEY} ${CLIENT_KEY}
 
@@ -24,7 +26,7 @@ Build_and_Deploy_Certs() {
 	for HOST in ${HOST_LIST}
 	do
 		ssh -o StrictHostKeyChecking=no -q root@${HOST} "[[ -d $CERTDIR ]] || mkdir -p $CERTDIR"
-		rsync -avW "${CLUSTER_ENV}" "${CA_CRT}" "${SERVER_CRT}" "${SERVER_KEY}" "${CLIENT_CRT}" "${CLIENT_KEY}" root@${HOST}:"${CERTDIR}/"
+		rsync -avW "${CLUSTER_ENV}" "${CA_CRT}" "${SERVER_CRT}" "${SERVER_KEY}" "${SERVICEACCOUNT_KEY}" "${CLIENT_CRT}" "${CLIENT_KEY}" root@${HOST}:"${CERTDIR}/"
 	done
 
 } # EO Build_and_Deploy_Certs
