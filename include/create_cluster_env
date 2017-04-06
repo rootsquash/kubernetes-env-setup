@@ -73,6 +73,7 @@ SERVER_KEY='${CERTDIR}/${CLUSTER_NAME}.key'
 SERVER_CRT='${CERTDIR}/${CLUSTER_NAME}.crt'
 CLIENT_KEY='${CERTDIR}/etcd-${CLUSTER_NAME}.key'
 CLIENT_CRT='${CERTDIR}/etcd-${CLUSTER_NAME}.crt'
+SERVICEACCOUNT_KEY='${CERTDIR}/${CLUSTER_NAME}-serviceaccount.key'
 	
 #-- Required to get etcdctl to work correctly in clustered env
 ETCDCTL_CA_FILE=\"\${CA_CRT}\"
