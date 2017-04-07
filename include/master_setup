@@ -201,8 +201,8 @@ KUBE_CONTROLLER_MANAGER_ARGS=\"--root-ca-file=${CA_CRT} --service-account-privat
 # default config should be adequate
 
 # Add your own!
-KUBE_SCHEDULER_ARGS=\"--leader-elect\"
-" > /etc/kubernetes/controller-manager
+KUBE_SCHEDULER_ARGS=\""
+" > /etc/kubernetes/scheduler
 
 
 
