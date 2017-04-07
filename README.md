@@ -36,17 +36,17 @@ This script will create certificate based authentication for each node to commun
 # Tested
 This has been tested with the following versions:
 
-    docker-1.10.3-46.el7.14.x86_64
+    docker-1.12.6-11.el7.x86_64
   
-    kubernetes-client-1.3.0-0.2.gitc5ee292.el7.x86_64
+    kubernetes-client-1.5.2-0.2.gitc55cf2b.el7.x86_64
   
-    kubernetes-master-1.3.0-0.2.gitc5ee292.el7.x86_64
+    kubernetes-master-1.5.2-0.2.gitc55cf2b.el7.x86_64
   
-    etcd-2.3.7-4.el7.x86_64
+    etcd-3.1.0-2.el7.x86_64
   
-    flannel-0.5.3-9.el7.x86_64
+    flannel-0.7.0-1.el7.x86_64
   
-    haproxy-1.5.18-3.el7.x86_64
+    haproxy-1.5.18-3.el7_3.1.x86_64
   
     keepalived-1.2.13-8.el7.x86_64
   
