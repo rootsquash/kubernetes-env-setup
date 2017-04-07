@@ -51,5 +51,14 @@ This has been tested with the following versions:
     keepalived-1.2.13-8.el7.x86_64
   
   
+# Validation
+Once the setup script has completed, confirm you cluster is functioning.
 
+    # kubectl get nodes
+    NAME                STATUS    AGE
+    node1.example.com   Ready     1m
+    node2.example.com   Ready     1m
+    node3.example.com   Ready     1m
+    node4.example.com   Ready     1m
+    
 
