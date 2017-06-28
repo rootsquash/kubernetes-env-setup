@@ -182,7 +182,7 @@ KUBE_API_ARGS=\"--insecure-bind-address=127.0.0.1 --kubelet-https=true --client-
 
 # Add your own!
 
-KUBE_CONTROLLER_MANAGER_ARGS=\"--root-ca-file=${CA_CRT} --service-account-private-key-file=${CLIENT_KEY} --node-monitor-grace-period=20s --pod-eviction-timeout=20s --leader-elect --service-account-private-key-file=${SERVICEACCOUNT_KEY}\"
+KUBE_CONTROLLER_MANAGER_ARGS=\"--leader-elect --root-ca-file=${CA_CRT} --service-account-private-key-file=${CLIENT_KEY} --node-monitor-grace-period=20s --pod-eviction-timeout=20s --leader-elect --service-account-private-key-file=${SERVICEACCOUNT_KEY}\"
 " > /etc/kubernetes/controller-manager
 
 
@@ -201,7 +201,7 @@ KUBE_CONTROLLER_MANAGER_ARGS=\"--root-ca-file=${CA_CRT} --service-account-privat
 # default config should be adequate
 
 # Add your own!
-KUBE_SCHEDULER_ARGS=\""
+KUBE_SCHEDULER_ARGS=\"--leader-elect"
 " > /etc/kubernetes/scheduler
 
 
